@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>ระบบเช็กชื่อ QR Code</title>
+<style>
+*{box-sizing:border-box}body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Noto Sans Thai",Arial,sans-serif;background:#f4f6f8;color:#17202a}
+header{background:#111827;color:#fff;padding:18px 16px;text-align:center}h1{font-size:23px;margin:0 0 5px}.sub{opacity:.8;font-size:13px}
+main{max-width:760px;margin:auto;padding:16px}.card{background:#fff;border-radius:18px;padding:18px;margin:12px 0;box-shadow:0 2px 12px #0001}
+button{border:0;border-radius:13px;padding:13px 16px;font-size:16px;font-weight:700;cursor:pointer}.primary{background:#2563eb;color:white;width:100%;font-size:19px;padding:17px}.secondary{background:#e5e7eb;color:#111827}.danger{background:#fee2e2;color:#991b1b}
+input{width:100%;padding:13px;border:1px solid #d1d5db;border-radius:12px;font-size:17px;margin:7px 0 12px}
+#reader{width:100%;overflow:hidden;border-radius:15px;background:#111827;min-height:10px}video{width:100%;border-radius:15px;display:block}
+.status{padding:12px;border-radius:12px;background:#eff6ff;margin-top:12px}.ok{background:#dcfce7;color:#166534}.err{background:#fee2e2;color:#991b1b}
+.hidden{display:none!important}.small{font-size:13px;color:#6b7280}table{width:100%;border-collapse:collapse;font-size:14px}th,td{padding:9px;border-bottom:1px solid #eee;text-align:left}
+.qrgrid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}.qr{text-align:center;border:1px solid #ddd;border-radius:12px;padding:12px;background:white}.qr img,.qr canvas{max-width:100%;height:auto}
+@media(min-width:650px){.qrgrid{grid-template-columns:repeat(4,1fr)}}
+@media print{header,#employeeView,#adminLoginCard,.danger,button{display:none!important}main{max-width:none}.card{box-shadow:none}}
+</style>
+</head>
+<body>
+<header><h1>📋 ระบบเช็กชื่อ QR Code</h1><div class="sub">พนักงานใช้สำหรับสแกน • ผู้ดูแลมีหน้าจัดการแยก</div></header>
+<main>
+
+<section id="employeeView">
+<div class="card">
+<h2>📷 เช็กชื่อเข้างาน</h2>
+<p class="small">กดปุ่มแล้วอนุญาตให้เว็บไซต์ใช้กล้อง จากนั้นสแกน QR ประจำตัว</p>
+<button class="primary" onclick="startScanner()">📷 สแกน QR ตอนนี้</button>
+<div id="reader" class="hidden"></div>
+<div id="status" class="status">พร้อมสแกน</div>
+<button class="secondary hidden" id="stopBtn" onclick="stopScanner()" style="margin-top:10px;width:100%">หยุดกล้อง</button>
+</div>
+<div class="card">
+<h3>⌨️ ถ้ากล้องใช้ไม่ได้</h3>
+<input id="manualId" inputmode="numeric" maxlength="8" placeholder="กรอกรหัสพนักงาน 8 หลัก">
+<button class="secondary" onclick="manualCheck()" style="width:100%">เช็กชื่อด้วยรหัส</button>
+</div>
+<div class="card" id="myResult"><h3>ผลการเช็กชื่อ</h3><div class="small">เมื่อสแกนสำเร็จ ผลจะขึ้นตรงนี้</div></div>
+</section>
+
+<section id="adminView" class="hidden">
+<div class="card"><h2>🔐 ผู้ดูแลระบบ</h2><div class="small">หน้านี้ไม่แสดงให้พนักงานจนกว่าจะใส่รหัสผู้ดูแล</div></div>
+<div class="card"><h3>📊 รายการเช็กชื่อวันนี้</h3><div id="todayCount" class="status"></div>
+<div style="overflow:auto"><table><thead><tr><th>เวลา</th><th>รหัส</th><th>ชื่อ</th></tr></thead><tbody id="todayBody"></tbody></table></div>
+<button class="secondary" onclick="exportCSV()" style="margin-top:12px;width:100%">ดาวน์โหลด CSV</button></div>
+<div class="card"><h3>🪪 QR พนักงานทั้งหมด</h3><p class="small">QR แต่ละใบใช้รหัสพนักงานของคนนั้น</p><div id="qrGrid" class="qrgrid"></div>
+<button class="secondary" onclick="window.print()" style="margin-top:14px;width:100%">🖨️ พิมพ์ QR ทั้งหมด</button></div>
+<button class="danger" onclick="logoutAdmin()" style="width:100%">ออกจากผู้ดูแล</button>
+</section>
+
+<div class="card" id="adminLoginCard">
+<h3>🔐 เข้าสู่ผู้ดูแล</h3>
+<input id="adminPin" type="password" inputmode="numeric" maxlength="6" placeholder="รหัสผู้ดูแล 6 หลัก"><div class="small">หัวหน้างาน 5 คนที่ได้รับสิทธิ์: พี่แพม • การ์ตูน • ซัน • เมย์ • โจโจ้</div>
+<button class="secondary" onclick="loginAdmin()" style="width:100%">เข้าสู่ผู้ดูแล</button>
+</div>
+</main>
+
+<script>
+const EMPLOYEES=[{"id": "69071147", "name": "จุฑามาศ เทพพรหม", "position": "ผู้ช่วยผู้จัดการ"}, {"id": "69080650", "name": "จุฑามณี อิ่นคำ", "position": "กัปตันฝึกหัด"}, {"id": "69080657", "name": "ธีรเดช ปิ่นวิเศษ", "position": "กัปตันฝึกหัด"}, {"id": "69080671", "name": "ลลิภัสร์ ธิติชัยชินพงษ์", "position": "หัวหน้าครัวฝึกหัด"}, {"id": "69081539", "name": "กิตติศักดิ์ บุญพะหุลา", "position": "กัปตัน"}, {"id": "69081710", "name": "สุสิระ วิทยาพานัชนันท์", "position": "กัปตันฝึกหัด"}, {"id": "69081370", "name": "พรรณนิภา คงแป้น", "position": "แคชเชียร์ฝึก"}, {"id": "69081540", "name": "วาสนา จังกับ", "position": "แคชเชียร์ฝึก"}, {"id": "69090591", "name": "ดาราวัลย์ หมัดอาหลี", "position": "แคชเชียร์ฝึก"}, {"id": "69081546", "name": "จารุกิตติ์ ยอดนุ้ย", "position": "บริการ"}, {"id": "69081547", "name": "ปภาวดี พุ่มพวง", "position": "บริการ"}, {"id": "69080952", "name": "จิรเดช ปิ่นวิเศษ", "position": "บริการ"}, {"id": "69081538", "name": "อุมาพร ห่อเพ็ชร", "position": "บริการ"}, {"id": "69090223", "name": "ชมพูนุท ยอดแก้ว", "position": "บริการ"}, {"id": "69081467", "name": "มุขเมธิน ศิลปวิสุทธิ์", "position": "บริการ"}, {"id": "69090587", "name": "กนกวลัย ตาสี", "position": "บริการ"}, {"id": "69090529", "name": "บุญเหลือ เก้าเอี้ยน", "position": "บริการ"}, {"id": "69091190", "name": "แก้วลดา จันทร์มิน", "position": "บริการ"}, {"id": "69081576", "name": "เกียรติศักดิ์ หนูจีน", "position": "บริการ"}, {"id": "69081375", "name": "พัณณิตา บุญศัพท์", "position": "บริการ"}, {"id": "69090019", "name": "กัลยา นิ่มนวน", "position": "บริการ"}, {"id": "69081694", "name": "NWE NWE AUNG", "position": "ครัว"}, {"id": "69081686", "name": "KHIN CHAN MYAE THU", "position": "ครัว"}, {"id": "69081680", "name": "HNIN NU NU WAI", "position": "ครัว"}, {"id": "69090586", "name": "พิชชญาทิพย์ พูลสวัสดิ์", "position": "ครัว"}, {"id": "69081687", "name": "KHIN THINZAR PYAE SONE", "position": "ครัว"}, {"id": "69081685", "name": "KHAING THWE SOE", "position": "ครัว"}, {"id": "69081683", "name": "HTAR THET NWE PHYO", "position": "ครัว"}, {"id": "69080675", "name": "จิตรวดี ปิยะรัตน์", "position": "ครัว"}, {"id": "69090954", "name": "อลิตา หมัดอะด้ำ", "position": "ครัวยำ"}, {"id": "69081689", "name": "MI MI MYO LWIN", "position": "ครัว"}, {"id": "69081679", "name": "HNIN MOE YI", "position": "ครัว"}, {"id": "69081678", "name": "HNINHNIN WAI", "position": "ครัว"}, {"id": "69081466", "name": "ศดานันท์ มีแก้ว", "position": "ครัว"}, {"id": "69081682", "name": "HTAR HTAR MYINT", "position": "ครัว"}, {"id": "69081692", "name": "NAW PA PA SAY", "position": "ครัว"}, {"id": "69090518", "name": "ขนิษฐา ชูเชิด", "position": "ครัว"}, {"id": "69090519", "name": "กชกร สุราฤทธิ์", "position": "ครัวตำ"}];
+const ADMIN_PIN="123456";
+
+const ADMIN_IDS = new Set(["69071147","69080650","69080657","69080671","69081539"]);
+const ADMIN_NAMES = {
+ "69071147":"จุฑามาศ เทพพรหม • พี่แพม",
+ "69080650":"จุฑามณี อิ่นคำ • การ์ตูน",
+ "69080657":"ธีรเดช ปิ่นวิเศษ • ซัน",
+ "69080671":"ลลิภัสร์ ธิติชัยชินพงษ์ • เมย์",
+ "69081539":"กิตติศักดิ์ บุญพะหุลา • โจโจ้"
+};
+
+let stream=null,scanning=false,lastScan="";
+
+function key(){return "attendance_"+new Date().toISOString().slice(0,10)}
+function records(){try{return JSON.parse(localStorage.getItem(key())||"[]")}catch(e){return[]}}
+function save(a){localStorage.setItem(key(),JSON.stringify(a))}
+function findEmp(id){return EMPLOYEES.find(e=>String(e.id)===String(id))}
+
+function checkIn(id){
+ id=String(id).trim(); const emp=findEmp(id), status=document.getElementById("status");
+ if(!emp){status.className="status err";status.textContent="❌ ไม่พบรหัสพนักงาน: "+id;return}
+ const a=records(), old=a.find(x=>x.id===emp.id);
+ if(old){status.className="status";status.textContent="⚠️ "+emp.name+" เช็กชื่อไปแล้ววันนี้ เวลา "+old.time;showResult(emp,old.time,true);return}
+ const time=new Date().toLocaleTimeString("th-TH",{hour:"2-digit",minute:"2-digit",second:"2-digit"});
+ a.push({id:emp.id,name:emp.name,time});save(a);
+ status.className="status ok";status.textContent="✅ เช็กชื่อสำเร็จ: "+emp.name+" เวลา "+time;showResult(emp,time,false);
+}
+function showResult(e,t,dup){document.getElementById("myResult").innerHTML="<h3>"+(dup?"⚠️":"✅")+" เช็กชื่อ "+(dup?"แล้ว":"สำเร็จ")+"</h3><b>"+esc(e.name)+"</b><br><span class='small'>รหัส "+e.id+" • เวลา "+t+"</span>"}
+function manualCheck(){checkIn(document.getElementById("manualId").value)}
+
+async function startScanner(){
+ if(scanning)return;
+ const reader=document.getElementById("reader"),stop=document.getElementById("stopBtn"),status=document.getElementById("status");
+ reader.classList.remove("hidden");stop.classList.remove("hidden");reader.innerHTML="";
+ if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){
+   status.className="status err";status.textContent="เบราว์เซอร์ไม่รองรับกล้อง กรุณาใช้ Safari ผ่าน HTTPS";return;
+ }
+ try{
+  stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:"environment"}},audio:false});
+  const video=document.createElement("video");video.setAttribute("playsinline","");video.autoplay=true;video.muted=true;video.srcObject=stream;reader.appendChild(video);
+  scanning=true;status.className="status";status.textContent="📷 กล้องเปิดแล้ว นำ QR มาไว้หน้ากล้อง";await video.play();
+  if("BarcodeDetector" in window){
+   const detector=new BarcodeDetector({formats:["qr_code"]});
+   const loop=async()=>{if(!scanning)return;try{const c=await detector.detect(video);if(c.length&&c[0].rawValue)handleScan(c[0].rawValue)}catch(e){}requestAnimationFrame(loop)};loop();
+  }else{status.textContent="📷 กล้องเปิดแล้ว แต่ Safari นี้ไม่มีตัวอ่าน QR ในตัว กรุณาใช้ช่องกรอกรหัส หรือเปิดด้วยเบราว์เซอร์ที่รองรับ QR"}
+ }catch(e){
+  reader.classList.add("hidden");stop.classList.add("hidden");status.className="status err";
+  status.textContent=e.name==="NotAllowedError"?"❌ ไม่ได้รับอนุญาตให้ใช้กล้อง: ไปที่ Settings > Safari > Camera > Allow แล้วเปิดหน้าเว็บใหม่":"❌ เปิดกล้องไม่ได้: "+e.message;
+ }
+}
+function handleScan(v){v=String(v).trim();if(v===lastScan)return;lastScan=v;checkIn(v);setTimeout(()=>lastScan="",2500)}
+function stopScanner(){scanning=false;if(stream){stream.getTracks().forEach(t=>t.stop());stream=null}document.getElementById("reader").classList.add("hidden");document.getElementById("stopBtn").classList.add("hidden")}
+
+function loginAdmin(){
+ const pin=document.getElementById("adminPin").value.trim();
+ const adminId=prompt("กรอกรหัสพนักงานหัวหน้างาน 8 หลัก");
+ if(pin===ADMIN_PIN && ADMIN_IDS.has(adminId)){
+  document.getElementById("employeeView").classList.add("hidden");
+  document.getElementById("adminLoginCard").classList.add("hidden");
+  document.getElementById("adminView").classList.remove("hidden");
+  const title=document.querySelector("#adminView .card h2");
+  if(title) title.textContent="🔐 ผู้ดูแล: "+ADMIN_NAMES[adminId];
+  renderAdmin();
+ }else alert("รหัสผู้ดูแลหรือรหัสหัวหน้างานไม่ถูกต้อง");
+}
+function logoutAdmin(){document.getElementById("adminView").classList.add("hidden");document.getElementById("adminLoginCard").classList.remove("hidden");document.getElementById("adminPin").value="";document.getElementById("employeeView").classList.remove("hidden")}
+function renderAdmin(){
+ const a=records();document.getElementById("todayCount").textContent="วันนี้เช็กชื่อแล้ว "+a.length+" คน";
+ document.getElementById("todayBody").innerHTML=a.map(x=>"<tr><td>"+x.time+"</td><td>"+x.id+"</td><td>"+esc(x.name)+"</td></tr>").join("")||"<tr><td colspan='3'>ยังไม่มีรายการ</td></tr>";
+ const grid=document.getElementById("qrGrid");grid.innerHTML="";
+ EMPLOYEES.forEach((e,i)=>{const box=document.createElement("div");box.className="qr";box.innerHTML="<b>"+esc(e.name)+"</b><div class='small'>"+e.id+"</div><div id='q"+i+"'></div>";grid.appendChild(box);new QRCode(document.getElementById("q"+i),{text:e.id,width:150,height:150})})
+}
+function exportCSV(){
+ const rows=[["วันที่","เวลา","รหัสพนักงาน","ชื่อ"],...records().map(x=>[new Date().toISOString().slice(0,10),x.time,x.id,x.name])];
+ const csv="\ufeff"+rows.map(r=>r.map(v=>'"'+String(v).replaceAll('"','""')+'"').join(",")).join("\n");
+ const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv;charset=utf-8"}));a.download="เช็กชื่อ.csv";a.click();
+}
+function esc(s){return String(s).replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]))}
+</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+</body></html>
